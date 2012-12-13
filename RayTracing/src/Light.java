@@ -135,14 +135,65 @@ class Light extends RaytracerObject
     {
         // Material for this object
         Material mat = intersection.getHitObject().getMaterialRef();
+        Point3d hitPoint = new Point3d(intersection.getHitPoint());
+        //intersection.getHitObject().getMatrix().transform(hitPoint);
+        //intersection.getHitObject().getInvTMatrix().transform(intersection.getNormal());
+        Vector3d l_vec;
+        if (this.isDirectional()) {
+        	l_vec = new Vector3d(this.direction);
+        } else {
+        	l_vec = new Vector3d(this.position.x-hitPoint.x, this.position.y-hitPoint.y, this.position.z-hitPoint.z);
+        }
         
-        // ...
-
+        Vector3d n_vec = new Vector3d(intersection.getNormal());
+        intersection.getHitObject().getInvTMatrix().transform(n_vec);
+        Vector3d r_vec = new Vector3d();
+        Vector3d v_vec = new Vector3d(r.getPoint().x-hitPoint.x, r.getPoint().y-hitPoint.y, r.getPoint().z-hitPoint.z);
+        Vector3d dist_vec = new Vector3d(l_vec);
+        Vector3d atten_vec = new Vector3d(1/ (attenuation.x + attenuation.y*dist_vec.x + attenuation.z*(dist_vec.x*dist_vec.x)),
+        								  1/ (attenuation.x + attenuation.y*dist_vec.y + attenuation.z*(dist_vec.y*dist_vec.y)),
+        								  1/ (attenuation.x + attenuation.y*dist_vec.z + attenuation.z*(dist_vec.z*dist_vec.z)));
+        //double distance = l_vec.length();
+       
+        n_vec.normalize();
+        l_vec.normalize();
+        v_vec.normalize();
+        Tools.reflect(r_vec, l_vec, n_vec);
+        r_vec.normalize();
+        
+        double n_dot_l = n_vec.dot(l_vec);
+        double r_dot_v = r_vec.dot(v_vec);
+        
+        // ambient
+        Vector3d ambient = new Vector3d(mat.getKa());
+        
+        // diffuse
+        Vector3d diffuse = new Vector3d(mat.getKd());
+        Tools.termwiseMul3d(diffuse, atten_vec);
+        Tools.termwiseMul3d(diffuse, tint);
+        diffuse.scale(Math.max(0, n_dot_l));
+        
+        //specular
+        Vector3d specular = new Vector3d(mat.getKs());
+        Tools.termwiseMul3d(specular, atten_vec);
+        Tools.termwiseMul3d(specular, tint);
+        double shininess = Math.pow(Math.max(0, r_dot_v), mat.getShiny());
+        specular.scale(shininess);
+        
+        // scale by T(u,v) if material has texture
+        if (mat.hasTexture()) {
+        	Vector3d Tu = new Vector3d(mat.getTextureColor(intersection.getU(), intersection.getV()));
+        	Tools.termwiseMul3d(ambient, Tu);
+        	Tools.termwiseMul3d(diffuse, Tu);
+        }
+        
+        System.out.println(specular);
+        
         // Compute color
-
-        // ...
-
-        // Placeholder (always return white)
-        return new Vector3d(1,1,1);
+        Vector3d rgb = new Vector3d(ambient);
+        rgb.add(diffuse);
+        rgb.add(specular);
+        
+        return rgb;
     }
 }

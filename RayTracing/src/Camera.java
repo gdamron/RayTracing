@@ -129,11 +129,15 @@ class Camera extends RaytracerObject
     public Ray pixelRay(double x, double y)
     {
         // Create and compute ray through pixel
+    	computeUVN();
+    	Point3d origin = new Point3d(eye.x,eye.y,eye.z-near);
+    	Vector3d direction = new Vector3d(u.x*x + v.x*y - n.x*near,
+    									  u.y*x + v.y*y - n.y*near,
+    									  u.z*x + v.z*y - n.z*near);
+        direction.normalize();
 
-        // ...
-
-        // Placeholder
-        return new Ray();
+        
+        return new Ray(origin, direction);
     }
 
     public void print(PrintStream out)

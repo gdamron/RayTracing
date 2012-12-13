@@ -63,6 +63,8 @@ class Scene
     {
         // Set up camera for this image resolution
         camera.setup(width, height);
+        //System.out.println("Near plane: " + camera.near);
+        //System.out.println(camera.pixelRay(0,0));
 
         // Make a new image
         image = new RGBImage(width, height);
@@ -108,24 +110,46 @@ class Scene
         // Check if the ray hit any object (or recursion depth was exceeded)
         if (depth <= recursionDepth && intersects(r, isect)) {
             // -- Ray hit object as specified in isect
-
+        	
             Material mat = isect.getHitObject().getMaterialRef();
-
+            
             // -- Compute contribution to this pixel for each light by doing
             //    the lighting computation there (sending out a shadow feeler
             //    ray to see if light is visible from intersection point)
+            
+            for (int i = 0; i < lights.size(); i++) {
+            	Light light = lights.get(i);
+            	//System.out.println(isect.getHitPoint());
+            	Vector3d tint = shadowRay(isect, light);
+            	//System.out.println(tint);
+            	color.add(light.compute(isect, tint, r));
+            	
+            	
+            }
 
-            // ...
-
-            // -- Call castRay() recursively to handle contribution
-            //    from reflection and refraction
-
-            // ...
-
-            // Placeholder (just use diffuse color)
-            color.set(mat.getKd());
+            /*if (depth < this.recursionDepth && color.x > 0.001 && color.y > 0.001 && color.z > 0.001) {
+            	Shape shape = isect.getHitObject();
+            	Vector3d reflect = new Vector3d();
+            	
+            	shape.getInvMatrix().transform(r.getPoint());
+            	shape.getInvMatrix().transform(r.getDirection());
+            	//Vector3d refract = new Vector3d();
+            	Vector3d l = new Vector3d(r.getPoint().x-isect.hitPoint.x, r.getPoint().y-isect.hitPoint.y, r.getPoint().z-isect.hitPoint.z);
+            	l.normalize();
+            	isect.getNormal().normalize();
+            	Tools.reflect(reflect, l, isect.getNormal());
+            	//System.out.println(reflect);
+            	shape.getMatrix().transform(r.getPoint());
+            	shape.getMatrix().transform(r.getDirection());
+            	
+            	reflect.set(castRay(new Ray(isect.getHitPoint(),reflect), depth+1));
+            	Tools.termwiseMul3d(reflect, isect.getHitObject().getMaterialRef().getKs());
+            	color.add(reflect);
+            }*/
+            //color.set(mat.getKd());
         }
-
+        
+        
         return color;
     }
 
@@ -134,27 +158,56 @@ class Scene
      */
     private boolean intersects(Ray r, ISect intersection)
     {
-        // ...
-
+    	//System.out.println("r in: " + r);
+    	double shortestDistance = 0.0;
+    	int minIndex = 0;
+    	boolean retval = false;
+    	boolean minDistSet = false;
+    	Shape closestShape = null;
+    	
         // For each object
-        Enumeration e = objects.elements();
-        while (e.hasMoreElements()) {
-            Shape current = (Shape)e.nextElement();
-
-            // ...
-
-            // Find closest intersection point
-
-            // ...
+        for (int i = 0; i < objects.size(); i++) {
+            Shape current = (Shape) objects.get(i);
+            // transform ray into object space
+            current.getInvMatrix().transform(r.getDirection());
+            current.getInvMatrix().transform(r.getPoint());
+            // check for hit
+            if (current.hit(r, intersection, true, epsilon)) {
+            	retval=true;
+            	Vector3d d = new Vector3d(r.getPoint().x-intersection.getHitPoint().x,
+            							  r.getPoint().y-intersection.getHitPoint().y,
+            							  r.getPoint().z-intersection.getHitPoint().z);
+            	double dist = d.length();
+            	// if object is closer than others, take note
+            	if ((dist < shortestDistance) || !minDistSet) {
+            		minDistSet = true;
+            		shortestDistance = dist;
+            		minIndex = i;
+            	}
+            	
+            }
+            // transform ray back into world space
+            current.getMatrix().transform(r.getPoint());
+            current.getMatrix().transform(r.getDirection());
+            
         }
-       
-        if (intersection.getHitObject() != null) {
-            // Transform intersection into world space
-
-            // ...
+        
+        if (retval==true) {
+        	closestShape = objects.get(minIndex);
+        	// transform ray into object space
+        	closestShape.getInvMatrix().transform(r.getDirection());
+            closestShape.getInvMatrix().transform(r.getPoint());
+            // get the intersection
+        	closestShape.hit(r, intersection, false, epsilon);
+            // transform intersection and ray back into world space
+        	intersection.getNormal().normalize();
+        	closestShape.getMatrix().transform(intersection.getHitPoint());
+        	closestShape.getInvTMatrix().transform(intersection.getNormal());
+        	r.getDirection().scale(intersection.getT());
+        	closestShape.getMatrix().transform(r.getDirection());
+            closestShape.getMatrix().transform(r.getPoint());
         }
-
-        return false;
+        return retval;
     }
 
     /** compute the amount of unblocked color that is let through to
@@ -166,14 +219,18 @@ class Scene
      */
     Vector3d shadowRay(ISect intersection, Light light)
     {
-        // ...
-
-        // Compute shadow ray and call shadowTint() or shadowTintDirectional()
-
-        // ...
-
-        // Placeholder (not blocked)
-        return new Vector3d(1,1,1);
+        Vector3d lightVec;
+        Point3d hitPoint = new Point3d(intersection.getHitPoint());
+        
+        if (light.isDirectional()) {
+        	lightVec = new Vector3d(light.direction);
+        	//lightVec.normalize();
+        	return shadowTintDirectional(new Ray(hitPoint, lightVec));
+        } else {
+        	lightVec = new Vector3d(light.position.x-hitPoint.x, light.position.y-hitPoint.y, light.position.z-hitPoint.z);
+        	//lightVec.normalize();
+        	return shadowTint(new Ray(hitPoint, lightVec), 200.0);
+        }
     }
 
     /** determine how the light is tinted along a particular ray which
@@ -189,20 +246,27 @@ class Scene
      */
     private Vector3d shadowTint(Ray r, double maxT)
     {
-        Vector3d tint = new Vector3d(1.0, 1.0, 1.0);
-
-        // ...
-
+    	boolean wasHit = false;
+        Vector3d tint = new Vector3d(0.0, 0.0, 0.0);
+        ISect intersection = new ISect();
         // For each object
         Enumeration e = objects.elements();
         while (e.hasMoreElements()) {
-            Shape current = (Shape)e.nextElement();
-
-            // ...
-
-            // ... find product of Kt values that intersect this ray
+        	Shape current = (Shape) e.nextElement();
+        	current.getInvMatrix().transform(r.getDirection());
+            current.getInvMatrix().transform(r.getPoint());
+            if (current.hit(r, intersection, false, epsilon)) {
+            	wasHit = true;
+            	//Tools.termwiseMul3d(tint, intersection.getHitObject().getMaterialRef().getKt());
+            	//tint.set(0,0,0);
+            	tint.add(intersection.getHitObject().getMaterialRef().getKt());
+            }
+            current.getMatrix().transform(r.getDirection());
+            current.getMatrix().transform(r.getPoint());
         }
-
+        
+        if (!wasHit) tint.set(1.0,1.0,1.0);
+        
         return tint;
     }
 
