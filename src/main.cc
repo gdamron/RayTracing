@@ -1,12 +1,15 @@
 #include "includes.h"
 
+#include "nlohmann/json.h"
 #include "camera.h"
 #include "color.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "sphere.h"
 
+#include <string.h>
 #include <iostream>
+#include <fstream>
 
 using namespace std;
 
@@ -80,7 +83,20 @@ hittable_list generate_world() {
     return world;
 }
 
-int main() {
+int main(int argc, char** argv) {
+    nlohmann::json config;
+    for (int i = 0; i < argc; i++) {
+        auto arg = argv[i];
+        if (strcmp(arg, "--config") == 0 && i < argc - 1) {
+            auto file_name = argv[i + 1];
+            std::ifstream ifs(file_name);
+            ifs >> config;
+        }
+    }
+
+    cout << config["test"] << endl;;
+    return 0;
+
     // image settings
     const auto aspect_ratio = 16.0 / 9.0;
     const int width = 400;

@@ -8,7 +8,6 @@
 
 using std::shared_ptr;
 using std::make_shared;
-//using std::sqrt;
 
 const double RT_INFINITY = std::numeric_limits<double>::infinity();
 const double RT_PI = 3.1415926535897932385;
